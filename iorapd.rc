@@ -31,8 +31,8 @@ on post-fs-data
     mkdir /data/misc/iorapd/ 0750 iorapd system
 
 # Start iorapd when either prefetching or tracing is enabled.
-on property:persist.device_config.runtime_native_boot.iorap_perfetto_enable=true && property:ro.iorapd.enable=true
+on property:persist.device_config.runtime_native_boot.iorap_perfetto_enable=true && property:ro.iorapd.enable=true && property:persist.sys.without.treadahead=1
     start iorapd
 
-on property:persist.device_config.runtime_native_boot.iorap_readahead_enable=true && property:ro.iorapd.enable=true
+on property:persist.device_config.runtime_native_boot.iorap_readahead_enable=true && property:ro.iorapd.enable=true && property:persist.sys.without.treadahead=1
     start iorapd

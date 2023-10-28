@@ -32,8 +32,8 @@
 static constexpr const char* kServiceName = iorap::binder::IIorapImpl::getServiceName();
 
 int main(int /*argc*/, char** argv) {
-  bool tracing_allowed = iorap::common::IsTracingEnabled(/*default_value=*/"false");
-  bool readahead_allowed = iorap::common::IsReadAheadEnabled(/*default_value*/"false");
+  bool tracing_allowed = iorap::common::IsTracingEnabled(/*default_value=*/"true");
+  bool readahead_allowed = iorap::common::IsReadAheadEnabled(/*default_value*/"true");
   if (!tracing_allowed && !readahead_allowed) {
     LOG(INFO) << "Turn off IORap because both tracing and prefetching are off.";
     return 0;

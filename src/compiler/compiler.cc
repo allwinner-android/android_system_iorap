@@ -43,6 +43,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <android-base/properties.h>
+
+
 namespace iorap::compiler {
 
 using Inode = iorap::inode2filename::Inode;
@@ -331,6 +334,15 @@ auto /*observable<PageCacheFtraceEvent>*/ SelectPageCacheFtraceEvents(
 
       sub.on_next(std::move(out));
     };
+
+    /*AW_CODE;add iorap-filter-pid;jiangbin;201203*/
+    uint32_t cur_start_pid = 0;
+    bool droidboost_enable =
+        !android::base::GetIntProperty("persist.sys.droidboost.disable",/*default*/ 0);
+    /*end*/
+
+
+
 
     for (const ::perfetto::protos::TracePacket& packet : trace.packet()) {
       // Break out of all loops if we are unsubscribed.

@@ -68,6 +68,8 @@ const constexpr bool kExcludeDexFilesDefault = true;
 static std::atomic<bool> s_tracing_allowed{false};
 static std::atomic<bool> s_readahead_allowed{false};
 static std::atomic<uint64_t> s_min_traces{3};
+static std::string s_cur_start_package;//AW_CODE;jiangbin
+static bool droidboost_enable = false;
 
 struct PackageBlacklister {
   // "x.y.z;foo.bar.baz" colon-separated list of substrings
@@ -215,6 +217,8 @@ struct AppLaunchEventState {
                      << " ignored due to blacklisting.";
           break;
         }
+
+        s_cur_start_package = package_name;//AW_CODE
 
         // Create a new history ID chain for each new app start-up sequence.
         auto history_id_observable = rxcpp::observable<>::create<int>(
@@ -520,6 +524,20 @@ struct AppLaunchEventState {
           PerfettoTraceProto& trace_proto = std::get<0>(trace_tuple);
           int history_id = std::get<1>(trace_tuple);
 
+
+          /*AW_CODE;iorap-filter-pid;jiangbin;201203*/
+         // bool droidboost_enable =
+         // !android::base::GetIntProperty("persist.sys.droidboost.disable",/*default*/ 0);
+          if(droidboost_enable) {
+              if(versioned_component_name.GetPackage() != s_cur_start_package) {
+                LOG(WARNING) << "write trace record_package = "<< s_cur_start_package
+                << " cur_package= " <<versioned_component_name.GetPackage() << " Match Failed";
+                 return;
+              }
+          }
+         /*end*/
+
+
           db::PerfettoTraceFileModel file_model =
             db::PerfettoTraceFileModel::CalculateNewestFilePath(versioned_component_name);
 
@@ -552,6 +570,24 @@ struct AppLaunchEventState {
             } else {
               LOG(VERBOSE) << "Inserted into db: " << *raw_trace;
             }
+            /*AW_CODE;iorap-immediately compile;jiangbin;201203*/
+          if(droidboost_enable) {
+            maintenance::ControllerParameters params{
+              /*output_text*/false,
+              /*inode_textcache*/std::nullopt,
+              WOULD_LOG(VERBOSE),
+              /*recompile*/true,
+              s_min_traces,
+              std::make_shared<maintenance::Exec>(),
+              common::ExcludeDexFiles(kExcludeDexFilesDefault)};
+
+            if(!maintenance::CompileSingleAppOnDevice(db, std::move(params), versioned_component_name.GetPackage())) {
+                LOG(WARNING) << "Immediately CompilePackage: " << versioned_component_name.GetPackage() << " Failed";
+            }
+          }
+            /*end*/
+
+
           }
         },
         /*on_error*/[](rxcpp::util::error_ptr err) {
@@ -1227,21 +1263,32 @@ class EventManager::Impl {
   void RefreshSystemProperties(::android::Printer& printer) {
     // TODO: read all properties from one config class.
     // PH properties do not work if they contain ".". "_" was instead used here.
-    tracing_allowed_ = common::IsTracingEnabled(/*default_value=*/"false");
-    s_tracing_allowed = tracing_allowed_;
-    printer.printFormatLine("iorapd.perfetto.enable = %s", tracing_allowed_ ? "true" : "false");
 
-    readahead_allowed_ = common::IsReadAheadEnabled(/*default_value=*/"false");
-    s_readahead_allowed = readahead_allowed_;
-    printer.printFormatLine("iorapd.readahead.enable = %s", s_readahead_allowed ? "true" : "false");
+    droidboost_enable = !android::base::GetIntProperty("persist.sys.droidboost.disable",/*default*/ 0);
 
-    s_min_traces =
-        ::android::base::GetUintProperty<uint64_t>("iorapd.maintenance.min_traces", /*default*/1);
-    uint64_t min_traces = s_min_traces;
-    printer.printFormatLine("iorapd.maintenance.min_traces = %" PRIu64, min_traces);
+    if(droidboost_enable) {
+        tracing_allowed_ = true;
+        s_tracing_allowed = true;
+        readahead_allowed_ = true;
+        s_readahead_allowed = true;
+        s_min_traces = 2;
+    } else {
+        tracing_allowed_ = common::IsTracingEnabled(/*default_value=*/"true"/*AW_CODE,default enable*/);
+        s_tracing_allowed = tracing_allowed_;
+        printer.printFormatLine("iorapd.perfetto.enable = %s", tracing_allowed_ ? "true" : "false");
 
-    printer.printFormatLine("iorapd.exclude_dex_files = %s",
-                            common::ExcludeDexFiles(kExcludeDexFilesDefault) ? "true" : "false");
+        readahead_allowed_ = common::IsReadAheadEnabled(/*default_value=*/"true"/*AW_CODE,default enable*/);
+        s_readahead_allowed = readahead_allowed_;
+        printer.printFormatLine("iorapd.readahead.enable = %s", s_readahead_allowed ? "true" : "false");
+
+        s_min_traces =
+            ::android::base::GetUintProperty<uint64_t>("iorapd.maintenance.min_traces", /*default*/2/*AW_CODE,default 2 min*/);
+        uint64_t min_traces = s_min_traces;
+        printer.printFormatLine("iorapd.maintenance.min_traces = %" PRIu64, min_traces);
+
+        printer.printFormatLine("iorapd.exclude_dex_files = %s",
+                                common::ExcludeDexFiles(kExcludeDexFilesDefault) ? "true" : "false");
+    }
 
     package_blacklister_ = PackageBlacklister{
         /* Colon-separated string list of blacklisted packages, e.g.
